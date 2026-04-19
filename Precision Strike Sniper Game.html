@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Precision Strike</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overscroll-behavior: none; /* Prevents pull-to-refresh on mobile */
+            background-color: #374151; /* gray-700 */
+            color: #f3f4f6; /* gray-100 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* Hide scrollbars that might appear due to canvas */
+        }
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            max-width: 95vw;
+            max-height: calc(95vw * 0.75); /* Maintain 4:3 aspect ratio */
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 0.5rem; /* rounded-lg */
+            overflow: hidden; /* Crucial for scope effect */
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #4b5563; /* gray-600, default bg if map doesn't load */
+            cursor: crosshair;
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        #scopeOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><defs><mask id="scopeMask"><rect width="100%" height="100%" fill="black"/><circle cx="50%" cy="50%" r="200" fill="white"/></mask></defs><rect width="100%" height="100%" fill="rgba(0,0,0,0.85)" mask="url(%23scopeMask)"/><line x1="0" y1="50%" x2="calc(50% - 205px)" y2="50%" stroke="black" stroke-width="2"/><line x1="calc(50% + 205px)" y1="50%" x2="100%" y2="50%" stroke="black" stroke-width="2"/><line x1="50%" y1="0" x2="50%" y2="calc(50% - 205px)" stroke="black" stroke-width="2"/><line x1="50%" y1="calc(50% + 205px)" x2="50%" y2="100%" stroke="black" stroke-width="2"/><circle cx="50%" cy="50%" r="200" stroke="black" stroke-width="3" fill="none"/></svg>');
+            background-size: cover;
+            pointer-events: none; /* Allows clicks to pass through to canvas */
+            display: none; /* Hidden by default */
+            z-index: 10;
+        }
+        #scopeOverlay.zoomed {
+            display: block;
+        }
+        /* Crosshair for zoomed view (center of scope) */
+        #scopeOverlay.zoomed::before, #scopeOverlay.zoomed::after {
+            content: '';
+            position: absolute;
+            background-color: rgba(255, 0, 0, 0.7); /* Red crosshair lines */
+            z-index: 11; /* Above scope graphic */
+        }
+        #scopeOverlay.zoomed::before { /* Vertical line */
+            left: 50%;
+            top: calc(50% - 25px); /* Centered within scope view */
+            width: 2px;
+            height: 50px;
+            transform: translateX(-50%);
+        }
+        #scopeOverlay.zoomed::after { /* Horizontal line */
+            top: 50%;
+            left: calc(50% - 25px); /* Centered within scope view */
+            height: 2px;
+            width: 50px;
+            transform: translateY(-50%);
+        }
+
+        .ui-panel {
+            background-color: rgba(31, 41, 55, 0.85); /* gray-800 with opacity */
+            padding: 0.75rem 1.25rem; /* py-3 px-5 */
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            transition: background-color 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary {
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #2563eb; /* blue-600 */
+        }
+        .btn-secondary {
+            background-color: #6b7280; /* gray-500 */
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #4b5563; /* gray-600 */
+        }
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(17, 24, 39, 0.95); /* gray-900 */
+            color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            z-index: 100;
+            box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        }
+
+        /* Basic map background - replace with actual images for different maps */
+        .map-desert { background-image: linear-gradient(to bottom, #f0e68c, #deb887); }
+        .map-urban { background-image: linear-gradient(to bottom, #778899, #2f4f4f); }
+        .map-forest { background-image: linear-gradient(to bottom, #228b22, #006400); }
+    </style>
+</head>
+<body>
+    <div id="gameUI" class="w-full max-w-4xl p-4 flex justify-between items-center mb-2">
+        <div class="ui-panel">Score: <span id="scoreDisplay">0</span></div>
+        <div class="ui-panel">Time: <span id="timeDisplay">60</span>s</div>
+        <div class="ui-panel">Ammo: <span id="ammoDisplay">10</span>/<span id="maxAmmoDisplay">10</span></div>
+        <div class="flex space-x-2">
+            <button id="zoomBtn" class="btn btn-primary">Zoom In</button>
+            <button id="reloadBtn" class="btn btn-secondary">Reload</button>
+        </div>
+    </div>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="scopeOverlay"></div>
+         <!-- Message Box for Start/End Game -->
+        <div id="messageBox" class="message-box hidden">
+            <h2 id="messageTitle" class="text-2xl font-bold mb-4">Game Over</h2>
+            <p id="messageText" class="mb-6">Your score: 0</p>
+            <button id="startGameBtn" class="btn btn-primary">Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameContainer = document.getElementById('gameContainer');
+        const scopeOverlay = document.getElementById('scopeOverlay');
+
+        // UI Elements
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const ammoDisplay = document.getElementById('ammoDisplay');
+        const maxAmmoDisplay = document.getElementById('maxAmmoDisplay');
+        const zoomBtn = document.getElementById('zoomBtn');
+        const reloadBtn = document.getElementById('reloadBtn');
+        const messageBox = document.getElementById('messageBox');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageText = document.getElementById('messageText');
+        const startGameBtn = document.getElementById('startGameBtn');
+
+        // Game Settings
+        const GUNS = {
+            standardRifle: {
+                ammo: 10,
+                maxAmmo: 10,
+                reloadTime: 2000, // ms
+                zoomFactor: 3, // How much to zoom in
+                swayFactor: 2, // Pixel sway when zoomed
+                damage: 100
+            }
+        };
+        const MAPS = {
+            desertOutpost: {
+                name: "Desert Outpost",
+                bgColorClass: "map-desert", // for canvas background fallback
+                targets: [
+                    // { x, y, radius, health, type: 'static'/'horizontal'/'vertical', speed, id }
+                    // id will be assigned dynamically
+                ]
+            }
+            // Add more maps here later
+        };
+
+        let currentGun = JSON.parse(JSON.stringify(GUNS.standardRifle)); // Deep copy
+        let currentMapData;
+
+        let score = 0;
+        let timeLeft = 60; // seconds
+        let targets = [];
+        let isZoomed = false;
+        let isReloading = false;
+        let gameActive = false;
+        let timerInterval;
+        let animationFrameId;
+
+        let mousePos = { x: 0, y: 0 };
+        let currentSway = { x: 0, y: 0 };
+
+        // Target Object
+        class Target {
+            constructor(x, y, radius, health, type = 'static', speed = 0) {
+                this.id = Date.now() + Math.random(); // Unique ID
+                this.x = x;
+                this.y = y;
+                this.initialX = x;
+                this.initialY = y;
+                this.radius = radius;
+                this.health = health;
+                this.maxHealth = health;
+                this.type = type; // 'static', 'horizontal', 'vertical', 'circular'
+                this.speed = speed;
+                this.direction = 1; // For movement
+                this.isHit = false;
+                this.hitTime = 0; // Time when hit, for fade out effect
+                this.isEliminated = false;
+
+                // For circular motion
+                this.angle = 0;
+                this.orbitRadius = 50;
+            }
+
+            draw(offsetX = 0, offsetY = 0, currentZoom = 1) {
+                if (this.isEliminated && Date.now() - this.hitTime > 1000) return; // Fully faded
+
+                const displayX = (this.x - offsetX) * currentZoom;
+                const displayY = (this.y - offsetY) * currentZoom;
+                const displayRadius = this.radius * currentZoom;
+
+                ctx.beginPath();
+                ctx.arc(displayX, displayY, displayRadius, 0, Math.PI * 2);
+
+                if (this.isEliminated) {
+                    const alpha = Math.max(0, 1 - (Date.now() - this.hitTime) / 1000);
+                    ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.7})`; // Fading red
+                    ctx.strokeStyle = `rgba(150, 0, 0, ${alpha})`;
+                } else if (this.isHit) {
+                     ctx.fillStyle = "rgba(255, 165, 0, 0.8)"; // Orange when hit
+                     ctx.strokeStyle = "rgba(200, 100, 0, 1)";
+                     this.isHit = false; // Reset for next frame, or manage with a timer
+                } else {
+                    // Body
+                    ctx.fillStyle = "rgba(150, 75, 0, 0.9)"; // Brownish
+                    ctx.fill();
+                    // Head (smaller circle on top)
+                    ctx.beginPath();
+                    ctx.arc(displayX, displayY - displayRadius * 0.7, displayRadius * 0.5, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255, 224, 189, 0.9)"; // Skin color
+                }
+                ctx.fill();
+                ctx.lineWidth = 2 * currentZoom;
+                ctx.stroke();
+
+                // Optional: Health bar (if not insta-kill)
+                // if (!this.isEliminated && this.health < this.maxHealth) {
+                //     ctx.fillStyle = 'red';
+                //     ctx.fillRect(displayX - displayRadius, displayY - displayRadius - 10 * currentZoom, displayRadius * 2, 5 * currentZoom);
+                //     ctx.fillStyle = 'green';
+                //     ctx.fillRect(displayX - displayRadius, displayY - displayRadius - 10 * currentZoom, (displayRadius * 2) * (this.health / this.maxHealth), 5 * currentZoom);
+                // }
+            }
+
+            update(deltaTime) {
+                if (this.isEliminated) return;
+                const moveDistance = this.speed * deltaTime;
+
+                switch (this.type) {
+                    case 'horizontal':
+                        this.x += moveDistance * this.direction;
+                        if (this.x > this.initialX + 100 || this.x < this.initialX - 100) {
+                            this.direction *= -1;
+                             this.x = Math.max(this.initialX - 100, Math.min(this.initialX + 100, this.x)); // Clamp
+                        }
+                        break;
+                    case 'vertical':
+                        this.y += moveDistance * this.direction;
+                        if (this.y > this.initialY + 50 || this.y < this.initialY - 50) {
+                            this.direction *= -1;
+                             this.y = Math.max(this.initialY - 50, Math.min(this.initialY + 50, this.y)); // Clamp
+                        }
+                        break;
+                    case 'circular':
+                        this.angle += moveDistance * 0.05; // Adjust angle speed factor
+                        this.x = this.initialX + Math.cos(this.angle) * this.orbitRadius;
+                        this.y = this.initialY + Math.sin(this.angle) * this.orbitRadius;
+                        break;
+                }
+                // Keep targets within canvas bounds (simple clamping)
+                this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y));
+            }
+
+            checkHit(shotX, shotY) {
+                if (this.isEliminated) return false;
+                const distance = Math.sqrt((shotX - this.x) ** 2 + (shotY - this.y) ** 2);
+                if (distance < this.radius) {
+                    this.health -= currentGun.damage;
+                    this.isHit = true;
+                    if (this.health <= 0) {
+                        this.isEliminated = true;
+                        this.hitTime = Date.now();
+                        return true; // Target eliminated
+                    }
+                    return false; // Target hit but not eliminated
+                }
+                return false;
+            }
+        }
+
+        function setupLevel(mapName) {
+            currentMapData = MAPS[mapName];
+            if (!currentMapData) {
+                console.error("Map not found:", mapName);
+                currentMapData = MAPS.desertOutpost; // Fallback
+            }
+            canvas.className = currentMapData.bgColorClass; // Set background style
+
+            targets = []; // Clear previous targets
+            // Define target positions for this map (example)
+            // Coordinates are relative to unzoomed canvas
+            const baseTargets = [
+                { x: 150, y: 300, radius: 15, health: 100, type: 'static' },
+                { x: 650, y: 250, radius: 20, health: 100, type: 'horizontal', speed: 50 }, // speed in pixels/sec
+                { x: 400, y: 150, radius: 15, health: 100, type: 'vertical', speed: 30 },
+                { x: 500, y: 450, radius: 18, health: 100, type: 'circular', speed: 40 },
+                { x: 700, y: 500, radius: 12, health: 100, type: 'static' },
+            ];
+            baseTargets.forEach(t => targets.push(new Target(t.x, t.y, t.radius, t.health, t.type, t.speed)));
+        }
+
+
+        function updateGameUI() {
+            scoreDisplay.textContent = score;
+            timeDisplay.textContent = timeLeft;
+            ammoDisplay.textContent = currentGun.ammo;
+            maxAmmoDisplay.textContent = currentGun.maxAmmo;
+            zoomBtn.textContent = isZoomed ? `Zoom Out (x${currentGun.zoomFactor})` : "Zoom In";
+            scopeOverlay.classList.toggle('zoomed', isZoomed);
+        }
+
+        function shoot() {
+            if (isReloading || currentGun.ammo <= 0 || !gameActive) {
+                if (currentGun.ammo <= 0 && !isReloading) updateMessageBox("Empty Clip!", "Reload your rifle.", false, true);
+                return;
+            }
+
+            currentGun.ammo--;
+            let shotX = mousePos.x;
+            let shotY = mousePos.y;
+
+            // Adjust shot coordinates if zoomed
+            if (isZoomed) {
+                const rect = canvas.getBoundingClientRect();
+                // mousePos is already relative to canvas.
+                // When zoomed, the view is centered on mousePos (with sway).
+                // The effective "world" coordinates are derived from the center of the zoom.
+                const viewCenterX = canvas.width / 2;
+                const viewCenterY = canvas.height / 2;
+                
+                // Mouse position relative to the canvas center.
+                let relativeMouseX = mousePos.x - viewCenterX;
+                let relativeMouseY = mousePos.y - viewCenterY;
+
+                // The actual point in the game world we are aiming at.
+                // This is the tricky part: the scope's center IS mousePos.
+                // So, the world coordinate is mousePos when unzoomed, but needs to be calculated from
+                // the center of the scope view when zoomed.
+                // The center of the *scope view* on the canvas is always canvas.width/2, canvas.height/2.
+                // This point (canvas.width/2, canvas.height/2) corresponds to a point in the *unzoomed world*.
+                // This unzoomed world point is (mousePos.x + currentSway.x, mousePos.y + currentSway.y)
+                shotX = mousePos.x + currentSway.x;
+                shotY = mousePos.y + currentSway.y;
+            }
+
+
+            let hitTarget = false;
+            targets.forEach(target => {
+                if (target.checkHit(shotX, shotY)) {
+                    score += 100; // Points for elimination
+                    hitTarget = true;
+                }
+            });
+
+            // Play shot sound (conceptual)
+            // console.log(`Shot fired at (${shotX.toFixed(2)}, ${shotY.toFixed(2)}). Hit: ${hitTarget}`);
+
+            updateGameUI();
+            checkWinOrLose();
+        }
+
+        function reload() {
+            if (isReloading || currentGun.ammo === currentGun.maxAmmo || !gameActive) return;
+
+            isReloading = true;
+            updateMessageBox("Reloading...", "", false, true);
+            // Play reload sound
+            setTimeout(() => {
+                currentGun.ammo = currentGun.maxAmmo;
+                isReloading = false;
+                if (gameActive) clearMessageBox(); // Clear only if game is still active
+                updateGameUI();
+            }, currentGun.reloadTime);
+        }
+
+        function toggleZoom() {
+            if (!gameActive) return;
+            isZoomed = !isZoomed;
+            if (isZoomed) {
+                gameContainer.style.cursor = 'none'; // Hide default cursor when zoomed
+            } else {
+                gameContainer.style.cursor = 'crosshair';
+            }
+            updateGameUI();
+        }
+
+        function gameLoop(timestamp) {
+            if (!gameActive) return;
+            animationFrameId = requestAnimationFrame(gameLoop);
+
+            const deltaTime = (timestamp - (lastTimestamp || timestamp)) / 1000; // seconds
+            lastTimestamp = timestamp;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Apply map background class to canvas itself if no image is drawn
+            if (!canvas.style.backgroundImage && currentMapData) {
+                 // For gradient backgrounds, this won't work directly on ctx.
+                 // The class is on the canvas element itself for CSS to handle.
+            }
+
+            // Calculate sway for zoomed view
+            if (isZoomed) {
+                currentSway.x = (Math.random() - 0.5) * 2 * currentGun.swayFactor;
+                currentSway.y = (Math.random() - 0.5) * 2 * currentGun.swayFactor;
+            } else {
+                currentSway.x = 0;
+                currentSway.y = 0;
+            }
+
+            // Determine rendering parameters based on zoom
+            let drawOffsetX = 0;
+            let drawOffsetY = 0;
+            let currentZoomLevel = 1;
+
+            if (isZoomed) {
+                currentZoomLevel = currentGun.zoomFactor;
+                // Center the zoomed view on the mouse position (plus sway)
+                // The top-left of the zoomed viewport in world coordinates:
+                drawOffsetX = (mousePos.x + currentSway.x) - (canvas.width / 2 / currentZoomLevel);
+                drawOffsetY = (mousePos.y + currentSway.y) - (canvas.height / 2 / currentZoomLevel);
+            }
+            
+            // Draw background elements if any (e.g., buildings, terrain details)
+            // For now, it's just a solid color or gradient via CSS class
+
+            // Update and draw targets
+            targets.forEach(target => {
+                target.update(deltaTime); // Pass deltaTime for consistent movement
+                target.draw(drawOffsetX, drawOffsetY, currentZoomLevel);
+            });
+
+
+            // Draw unzoomed crosshair if not zoomed
+            if (!isZoomed) {
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(mousePos.x - 10, mousePos.y);
+                ctx.lineTo(mousePos.x + 10, mousePos.y);
+                ctx.moveTo(mousePos.x, mousePos.y - 10);
+                ctx.lineTo(mousePos.x, mousePos.y + 10);
+                ctx.stroke();
+            }
+        }
+        
+        let lastTimestamp = 0;
+
+        function checkWinOrLose() {
+            if (!gameActive) return;
+
+            const remainingTargets = targets.filter(t => !t.isEliminated).length;
+            if (remainingTargets === 0) {
+                endGame(true); // Win
+            } else if (timeLeft <= 0) {
+                endGame(false); // Lose - out of time
+            } else if (currentGun.ammo === 0 && remainingTargets > 0 && !isReloading) {
+                // Potential lose condition if auto-reload isn't a thing or all max ammo used up
+                // For now, player can reload. If truly out of all possible ammo (not implemented), then lose.
+            }
+        }
+
+        function startGame() {
+            messageBox.classList.add('hidden');
+            gameActive = true;
+            isZoomed = false; // Start unzoomed
+            gameContainer.style.cursor = 'crosshair';
+
+            score = 0;
+            timeLeft = 90; // Longer time for more targets
+            currentGun = JSON.parse(JSON.stringify(GUNS.standardRifle)); // Reset gun
+            isReloading = false;
+
+            setupLevel('desertOutpost'); // Load the map and targets
+
+            updateGameUI();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateGameUI();
+                if (timeLeft <= 0) {
+                    checkWinOrLose();
+                }
+            }, 1000);
+
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            lastTimestamp = performance.now(); // Reset lastTimestamp for deltaTime calculation
+            gameLoop(lastTimestamp);
+        }
+
+        function endGame(isWin) {
+            gameActive = false;
+            clearInterval(timerInterval);
+            if(animationFrameId) cancelAnimationFrame(animationFrameId);
+            gameContainer.style.cursor = 'default';
+
+            if (isWin) {
+                updateMessageBox("Mission Accomplished!", `All targets eliminated! Score: ${score}`, true);
+            } else {
+                const reason = timeLeft <= 0 ? "Out of time!" : "Targets remain.";
+                updateMessageBox("Mission Failed!", `${reason} Score: ${score}`, true);
+            }
+        }
+        
+        function updateMessageBox(title, text, showStartButton, isTemporary = false) {
+            messageTitle.textContent = title;
+            messageText.textContent = text;
+            messageBox.classList.remove('hidden');
+            if (showStartButton) {
+                startGameBtn.classList.remove('hidden');
+                startGameBtn.textContent = "Play Again"; // Or "Start Level"
+            } else {
+                startGameBtn.classList.add('hidden');
+            }
+            if (isTemporary) { // For messages like "Reloading..."
+                // Auto-hide can be handled by the function that called it (e.g., reload finishing)
+            }
+        }
+        function clearMessageBox() {
+            if (!startGameBtn.classList.contains('hidden')) return; // Don't clear if it's an end-game screen
+            messageBox.classList.add('hidden');
+        }
+
+
+        // Event Listeners
+        function resizeCanvas() {
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
+            canvas.width = containerWidth;
+            canvas.height = containerHeight;
+            // Re-render or adjust elements if needed after resize
+            if (gameActive) {
+                // If game is active, might need to redraw current frame,
+                // but gameLoop handles continuous redraw.
+                // However, target positions might need adjustment if they are % based.
+                // For now, using fixed world coords, so only view might change.
+            } else {
+                // If game not active (e.g. on menu screen), draw placeholder
+                ctx.fillStyle = '#4b5563';
+                ctx.fillRect(0,0,canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '24px Segoe UI';
+                ctx.textAlign = 'center';
+                // ctx.fillText("Click Start Game", canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Initial setup on load
+        document.addEventListener('DOMContentLoaded', () => {
+            resizeCanvas(); // Set initial canvas size
+            updateMessageBox("Precision Strike", "Click 'Start Game' to begin.", true);
+
+            canvas.addEventListener('mousemove', e => {
+                const rect = canvas.getBoundingClientRect();
+                mousePos.x = e.clientX - rect.left;
+                mousePos.y = e.clientY - rect.top;
+            });
+
+            canvas.addEventListener('click', () => {
+                if (gameActive && !isReloading) {
+                    shoot();
+                }
+            });
+            // Prevent context menu on canvas right-click if we want to use it for zoom later
+            canvas.addEventListener('contextmenu', e => e.preventDefault()); 
+
+            zoomBtn.addEventListener('click', toggleZoom);
+            reloadBtn.addEventListener('click', reload);
+            startGameBtn.addEventListener('click', startGame);
+
+             // Handle mouse wheel for zooming (optional)
+            canvas.addEventListener('wheel', e => {
+                if (!gameActive) return;
+                e.preventDefault(); // Prevent page scrolling
+                if (e.deltaY < 0 && !isZoomed) { // Scroll up to zoom in
+                    toggleZoom();
+                } else if (e.deltaY > 0 && isZoomed) { // Scroll down to zoom out
+                    toggleZoom();
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>
+

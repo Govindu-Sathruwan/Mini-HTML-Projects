@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Siege</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Cyber Siege */
+        body {
+            font-family: 'Inter', sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            overscroll-behavior: none; /* Prevents pull-to-refresh on mobile */
+            background-color: #111827; /* gray-900 - Dark theme */
+            color: #d1d5db; /* gray-300 */
+        }
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr); /* 10x10 grid */
+            grid-template-rows: repeat(10, 1fr);
+            width: 90vmin; /* Responsive width */
+            height: 90vmin; /* Responsive height */
+            max-width: 500px;
+            max-height: 500px;
+            border: 2px solid #4f46e5; /* indigo-600 - Cyber border */
+            border-radius: 0.5rem; /* rounded-lg */
+            background-color: #1f2937; /* gray-800 - Darker grid background */
+        }
+        .cell {
+            border: 1px solid #374151; /* gray-700 - Darker cell borders */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+        .cell.selected-unit-cell {
+            outline: 3px solid #facc15; /* yellow-400 - Highlight selected */
+            outline-offset: -3px;
+            box-shadow: 0 0 15px #facc15;
+        }
+        .cell.valid-move {
+            background-color: rgba(22, 163, 74, 0.4) !important; /* emerald-500 with opacity */
+        }
+        .cell.ai-thinking-move {
+            background-color: rgba(168, 85, 247, 0.3) !important; /* purple-500 with opacity for AI hint */
+        }
+        .unit {
+            width: 75%;
+            height: 75%;
+            border-radius: 0.25rem; /* Slightly squared units for cyber feel */
+            box-shadow: 0 0 8px rgba(255,255,255,0.3);
+            transition: transform 0.2s ease-out;
+        }
+        .player-unit { background-color: #10b981; /* emerald-500 */ border: 1px solid #059669; /* emerald-600 */}
+        .ai-unit { background-color: #a855f7; /* purple-500 */ border: 1px solid #9333ea; /* purple-600 */ }
+
+        .player-base { background-color: #047857 !important; /* emerald-700 */ }
+        .ai-base { background-color: #7e22ce !important; /* purple-700 */ }
+
+        .player-controlled { background-color: #34d399; /* emerald-400 */ opacity: 0.5; }
+        .ai-controlled { background-color: #c084fc; /* purple-400 */ opacity: 0.5; }
+        .neutral-tile { background-color: #4b5563; /* gray-600 */ }
+
+        /* Button styling */
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.375rem; /* rounded-md */
+            font-weight: 600; /* semibold */
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        .btn-primary {
+            background-color: #4f46e5; /* indigo-600 */
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #4338ca; /* indigo-700 */
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background-color: #6b7280; /* gray-500 */
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #4b5563; /* gray-600 */
+            transform: translateY(-2px);
+        }
+        .btn-disabled {
+            background-color: #374151 !important; /* gray-700 */
+            color: #9ca3af !important; /* gray-400 */
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* Message Area */
+        #messageArea {
+            min-height: 2.5rem; /* Ensure it doesn't collapse */
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .message-player { background-color: #059669; color: #d1fae5; } /* emerald-600 bg, emerald-100 text */
+        .message-ai { background-color: #7e22ce; color: #f3e8ff; } /* purple-700 bg, purple-100 text */
+        .message-gameover { background-color: #f59e0b; color: #fffbeb; } /* amber-500 bg, amber-50 text */
+        .message-neutral { background-color: #4b5563; color: #e5e7eb; } /* gray-600 bg, gray-200 text */
+
+        /* Pulsing animation for active player */
+        .pulse-player { animation: pulsePlayer 2s infinite; }
+        .pulse-ai { animation: pulseAI 2s infinite; }
+
+        @keyframes pulsePlayer {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } /* emerald-500 */
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        @keyframes pulseAI {
+            0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.7); } /* purple-500 */
+            70% { box-shadow: 0 0 0 10px rgba(168, 85, 247, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            .game-board { width: 95vmin; height: 95vmin; }
+            .controls div, .stats div { margin-bottom: 0.5rem; }
+            .btn { padding: 0.5rem 1rem; font-size: 0.9rem; }
+            h1 { font-size: 1.75rem; } /* text-2xl */
+            .text-lg { font-size: 1rem; }
+        }
+
+    </style>
+</head>
+<body class="bg-gray-900 flex flex-col items-center justify-center min-h-screen p-2 sm:p-4">
+
+    <h1 class="text-4xl font-bold text-indigo-400 mb-6 tracking-wider">Cyber Siege</h1>
+
+    <div class="mb-4 p-4 bg-gray-800 shadow-xl rounded-lg w-full max-w-md text-center">
+        <div id="messageArea" class="text-lg font-semibold message-neutral">Initializing System... Standby.</div>
+    </div>
+
+    <div class="game-board mb-6 shadow-2xl">
+        <!-- Cells will be generated by JavaScript -->
+    </div>
+
+    <div class="controls bg-gray-800 shadow-xl rounded-lg p-4 mb-6 w-full max-w-md">
+        <div class="flex justify-around items-center mb-4">
+            <div class="text-center">
+                <p class="text-sm text-gray-400">STATUS</p>
+                <p id="currentPlayerDisplay" class="text-xl font-bold">-</p>
+            </div>
+            <div class="text-center">
+                <p class="text-sm text-gray-400">Energy Cores (AP)</p>
+                <p id="actionPointsDisplay" class="text-xl font-bold">-</p>
+            </div>
+             <div class="text-center">
+                <p class="text-sm text-gray-400">Cycle (Turn)</p>
+                <p id="turnDisplay" class="text-xl font-bold">-</p>
+            </div>
+        </div>
+        <div class="flex justify-around">
+            <button id="spawnUnitBtn" class="btn btn-primary">Deploy Unit (2 AP)</button>
+            <button id="endTurnBtn" class="btn btn-secondary">End Cycle</button>
+        </div>
+    </div>
+
+    <div class="stats bg-gray-800 shadow-xl rounded-lg p-4 w-full max-w-md">
+        <h2 class="text-xl font-semibold text-indigo-400 mb-2 text-center">System Control (Nodes)</h2>
+        <div class="flex justify-around">
+            <p class="text-lg text-emerald-400">You (Green): <span id="playerScore" class="font-bold">0</span></p>
+            <p class="text-lg text-purple-400">System (Purple): <span id="aiScore" class="font-bold">0</span></p>
+        </div>
+    </div>
+
+    <button id="restartGameBtn" class="btn btn-primary mt-6 hidden">Re-Initiate Siege</button>
+
+    <script>
+        const GRID_SIZE = 10;
+        const MAX_TURNS = 20; // 10 turns per player
+        const ACTION_POINTS_PER_TURN = 3;
+        const SPAWN_COST = 2;
+        const MOVE_COST = 1;
+
+        const PLAYER = 'Player';
+        const AI = 'AI';
+
+        const TILE_EMPTY = 0;
+        const TILE_PLAYER = 1;
+        const TILE_AI = 2;
+
+        let gameBoardElement;
+        let grid = []; // Stores unit presence: null or { player: PLAYER/AI }
+        let tileOwners = []; // Stores tile ownership: TILE_EMPTY, TILE_PLAYER, TILE_AI
+
+        let currentPlayer;
+        let actionPoints;
+        let turnCount;
+        let selectedUnit = null; // { row, col, player }
+        let gameOver = false;
+        let aiThinking = false;
+
+        // UI Elements
+        let currentPlayerDisplay, actionPointsDisplay, turnDisplay, playerScoreDisplay, aiScoreDisplay;
+        let spawnUnitBtn, endTurnBtn, restartGameBtn, messageArea;
+
+        // Base locations
+        const PLAYER_BASE = { row: GRID_SIZE -1, col: 0 }; // Bottom-left
+        const AI_BASE = { row: 0, col: GRID_SIZE - 1 };   // Top-right
+
+        /**
+         * Initializes or restarts the game.
+         */
+        function initGame() {
+            gameBoardElement = document.querySelector('.game-board');
+            currentPlayerDisplay = document.getElementById('currentPlayerDisplay');
+            actionPointsDisplay = document.getElementById('actionPointsDisplay');
+            turnDisplay = document.getElementById('turnDisplay');
+            playerScoreDisplay = document.getElementById('playerScore');
+            aiScoreDisplay = document.getElementById('aiScore');
+            spawnUnitBtn = document.getElementById('spawnUnitBtn');
+            endTurnBtn = document.getElementById('endTurnBtn');
+            restartGameBtn = document.getElementById('restartGameBtn');
+            messageArea = document.getElementById('messageArea');
+
+            grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+            tileOwners = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(TILE_EMPTY));
+
+            currentPlayer = PLAYER;
+            actionPoints = ACTION_POINTS_PER_TURN;
+            turnCount = 1;
+            selectedUnit = null;
+            gameOver = false;
+            aiThinking = false;
+
+            // Setup initial state (fewer units for more strategic start)
+            placeUnit(PLAYER_BASE.row, PLAYER_BASE.col, PLAYER);
+            placeUnit(AI_BASE.row, AI_BASE.col, AI);
+
+            restartGameBtn.classList.add('hidden');
+            enablePlayerControls();
+
+            renderBoard();
+            updateUI();
+            updateMessage('Your turn. Deploy or move units.', PLAYER);
+        }
+
+        function enablePlayerControls() {
+            spawnUnitBtn.classList.remove('btn-disabled');
+            spawnUnitBtn.disabled = false;
+            endTurnBtn.classList.remove('btn-disabled');
+            endTurnBtn.disabled = false;
+        }
+
+        function disablePlayerControls() {
+            spawnUnitBtn.classList.add('btn-disabled');
+            spawnUnitBtn.disabled = true;
+            endTurnBtn.classList.add('btn-disabled');
+            endTurnBtn.disabled = true;
+        }
+
+
+        /**
+         * Places a unit on the grid and updates tile ownership.
+         */
+        function placeUnit(row, col, player, isMove = false) {
+            if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) return false;
+            
+            const occupyingUnit = grid[row][col];
+            if (occupyingUnit && occupyingUnit.player !== player && isMove) {
+                // Unit captured
+                updateMessage(`${player} eliminated System unit at [${row},${col}]!`, player);
+            }
+
+            grid[row][col] = { player: player };
+            tileOwners[row][col] = (player === PLAYER) ? TILE_PLAYER : TILE_AI;
+            return true;
+        }
+
+        /**
+         * Renders the entire game board.
+         */
+        function renderBoard() {
+            if (!gameBoardElement) return;
+            gameBoardElement.innerHTML = ''; 
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    // Base tile styling
+                    if (r === PLAYER_BASE.row && c === PLAYER_BASE.col) cell.classList.add('player-base');
+                    else if (r === AI_BASE.row && c === AI_BASE.col) cell.classList.add('ai-base');
+                    // Controlled tile styling
+                    else if (tileOwners[r][c] === TILE_PLAYER) cell.classList.add('player-controlled');
+                    else if (tileOwners[r][c] === TILE_AI) cell.classList.add('ai-controlled');
+                    else cell.classList.add('neutral-tile');
+
+                    // Unit styling
+                    if (grid[r][c]) {
+                        const unitElement = document.createElement('div');
+                        unitElement.classList.add('unit');
+                        if (grid[r][c].player === PLAYER) unitElement.classList.add('player-unit');
+                        else unitElement.classList.add('ai-unit');
+                        cell.appendChild(unitElement);
+                    }
+
+                    if (selectedUnit && selectedUnit.row === r && selectedUnit.col === c) {
+                        cell.classList.add('selected-unit-cell');
+                    }
+                    if (selectedUnit && currentPlayer === PLAYER && isValidMove(selectedUnit.row, selectedUnit.col, r, c)) {
+                         if (!(selectedUnit.row === r && selectedUnit.col === c)) {
+                           cell.classList.add('valid-move');
+                        }
+                    }
+
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    gameBoardElement.appendChild(cell);
+                }
+            }
+        }
+
+        /**
+         * Handles clicks on a grid cell (Player only).
+         */
+        function handleCellClick(row, col) {
+            if (gameOver || currentPlayer === AI || aiThinking) return;
+
+            const clickedCellUnit = grid[row][col];
+
+            if (selectedUnit) {
+                if (isValidMove(selectedUnit.row, selectedUnit.col, row, col) && actionPoints >= MOVE_COST) {
+                    const enemyUnitPresent = grid[row][col] && grid[row][col].player === AI;
+                    
+                    grid[selectedUnit.row][selectedUnit.col] = null; // Vacate previous spot
+                    placeUnit(row, col, PLAYER, true); // Place unit, true indicates it's a move (for capture message)
+                    
+                    actionPoints -= MOVE_COST;
+                    if (enemyUnitPresent) {
+                        updateMessage(`Hostile unit neutralized at [${row},${col}]!`, PLAYER);
+                    } else {
+                        updateMessage(`Unit moved to [${row},${col}].`, PLAYER);
+                    }
+                    selectedUnit = null;
+                    checkWinConditions();
+                } else if (clickedCellUnit && clickedCellUnit.player === PLAYER) {
+                    selectedUnit = { row, col, player: PLAYER };
+                    updateMessage(`Unit at [${row},${col}] selected. Designate target.`, PLAYER);
+                } else {
+                    selectedUnit = null; // Deselect
+                    updateMessage('Your turn. Select unit or action.', PLAYER);
+                }
+            } else { // No unit selected, try to select one
+                if (clickedCellUnit && clickedCellUnit.player === PLAYER) {
+                    selectedUnit = { row, col, player: PLAYER };
+                    updateMessage(`Unit at [${row},${col}] selected. Designate target or new action.`, PLAYER);
+                }
+            }
+            renderBoard();
+            updateUI();
+        }
+
+        /**
+         * Checks if a move is valid.
+         */
+        function isValidMove(sr, sc, dr, dc, forPlayer = PLAYER) {
+            if (sr === dr && sc === dc) return false; 
+
+            const rowDiff = Math.abs(sr - dr);
+            const colDiff = Math.abs(sc - dc);
+            if (!((rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1))) return false;
+
+            if (dr < 0 || dr >= GRID_SIZE || dc < 0 || dc >= GRID_SIZE) return false;
+
+            const destinationUnit = grid[dr][dc];
+            return !destinationUnit || destinationUnit.player !== forPlayer;
+        }
+
+        /**
+         * Handles "Spawn Unit" button click (Player only).
+         */
+        function handleSpawnUnit() {
+            if (gameOver || currentPlayer === AI || aiThinking || actionPoints < SPAWN_COST) {
+                 if (actionPoints < SPAWN_COST) updateMessage('Insufficient Energy Cores to deploy unit.', 'neutral');
+                return;
+            }
+            if (spawnUnitForPlayer(PLAYER, PLAYER_BASE)) {
+                 actionPoints -= SPAWN_COST;
+                 updateMessage('New unit deployed from base.', PLAYER);
+                 selectedUnit = null;
+                 checkWinConditions();
+            } else {
+                 updateMessage('Deployment failed. Base or adjacent nodes occupied.', 'neutral');
+            }
+            renderBoard();
+            updateUI();
+        }
+
+        function spawnUnitForPlayer(player, baseLocation) {
+             const directions = [[0,0], [-1,0], [1,0], [0,-1], [0,1]]; // Base first, then N, S, W, E
+             for (const [dr, dc] of directions) {
+                const r = baseLocation.row + dr;
+                const c = baseLocation.col + dc;
+                if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && !grid[r][c]) {
+                    // Can only spawn on own base, or on own controlled empty tiles adjacent to base
+                    if ( (r === baseLocation.row && c === baseLocation.col) ||
+                         (tileOwners[r][c] === (player === PLAYER ? TILE_PLAYER : TILE_AI)) ||
+                         tileOwners[r][c] === TILE_EMPTY ) // Allow spawning on empty adjacent for initial spread
+                    {
+                        placeUnit(r, c, player);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Handles "End Turn" button click.
+         */
+        function handleEndTurn() {
+            if (gameOver || aiThinking) return;
+
+            selectedUnit = null; // Deselect player unit
+            currentPlayer = AI;
+            actionPoints = ACTION_POINTS_PER_TURN;
+            turnCount++;
+            
+            updateMessage('System is processing...', AI);
+            disablePlayerControls(); // Player cannot act during AI turn
+            renderBoard(); // Clear player's highlights
+            updateUI();
+
+            if (turnCount > MAX_TURNS) {
+                endGameByMaxTurns();
+            } else {
+                aiThinking = true;
+                setTimeout(aiTurn, 1000); // AI takes its turn after a short delay
+            }
+        }
+        
+        /**
+         * AI's turn logic.
+         */
+        async function aiTurn() {
+            if (gameOver) { aiThinking = false; return; }
+            updateMessage('System calculating optimal strategy...', AI);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Simulate thinking
+
+            let currentAIActionPoints = ACTION_POINTS_PER_TURN;
+
+            // AI Action Loop (multiple actions per turn if AP allows)
+            for (let i = 0; i < ACTION_POINTS_PER_TURN; i++) { // Max 3 actions/decisions
+                if (currentAIActionPoints <= 0) break;
+
+                const aiUnits = [];
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    for (let c = 0; c < GRID_SIZE; c++) {
+                        if (grid[r][c] && grid[r][c].player === AI) {
+                            aiUnits.push({ r, c });
+                        }
+                    }
+                }
+
+                // 1. Prioritize Spawning if low on units or has spare AP
+                if (currentAIActionPoints >= SPAWN_COST && (aiUnits.length < 3 || Math.random() < 0.4)) { // Spawn more readily
+                    if(spawnUnitForPlayer(AI, AI_BASE)) {
+                        currentAIActionPoints -= SPAWN_COST;
+                        updateMessage('System deployed a new hostile unit.', AI);
+                        renderBoard(); updateUI(); await new Promise(resolve => setTimeout(resolve, 700));
+                        if (checkWinConditions()) { aiThinking = false; return; }
+                        continue; // Next action or end loop
+                    }
+                }
+                
+                // 2. Prioritize Attack Moves
+                let bestAttackMove = null;
+                let bestExpansionMove = null;
+                let minPlayerDistance = Infinity; // For expansion
+
+                for (const unit of aiUnits) {
+                    const possibleMoves = getValidMovesForUnit(unit.r, unit.c, AI);
+                    for (const move of possibleMoves) {
+                        // Attack move
+                        if (grid[move.r][move.c] && grid[move.r][move.c].player === PLAYER) {
+                            bestAttackMove = { from: unit, to: move };
+                            break; // Take first available attack
+                        }
+                        // Expansion move: prefer moving towards player base or units
+                        const distToPlayerBase = Math.abs(move.r - PLAYER_BASE.row) + Math.abs(move.c - PLAYER_BASE.col);
+                        if (distToPlayerBase < minPlayerDistance) {
+                            minPlayerDistance = distToPlayerBase;
+                            bestExpansionMove = { from: unit, to: move };
+                        }
+                    }
+                    if (bestAttackMove) break; 
+                }
+
+                // Execute best move
+                if (currentAIActionPoints >= MOVE_COST) {
+                    let moved = false;
+                    if (bestAttackMove) {
+                        grid[bestAttackMove.from.r][bestAttackMove.from.c] = null;
+                        placeUnit(bestAttackMove.to.r, bestAttackMove.to.c, AI, true);
+                        updateMessage(`System unit at [${bestAttackMove.from.r},${bestAttackMove.from.c}] neutralized your unit at [${bestAttackMove.to.r},${bestAttackMove.to.c}]!`, AI);
+                        currentAIActionPoints -= MOVE_COST;
+                        moved = true;
+                    } else if (bestExpansionMove) {
+                        grid[bestExpansionMove.from.r][bestExpansionMove.from.c] = null;
+                        placeUnit(bestExpansionMove.to.r, bestExpansionMove.to.c, AI, true);
+                        updateMessage(`System unit moved from [${bestExpansionMove.from.r},${bestExpansionMove.from.c}] to [${bestExpansionMove.to.r},${bestExpansionMove.to.c}].`, AI);
+                        currentAIActionPoints -= MOVE_COST;
+                        moved = true;
+                    }
+
+                    if (moved) {
+                        renderBoard(); updateUI(); await new Promise(resolve => setTimeout(resolve, 700));
+                        if (checkWinConditions()) { aiThinking = false; return; }
+                        continue; // Next action or end loop
+                    }
+                }
+                break; // No more moves or AP for this iteration
+            } // End AI action loop
+
+            // AI turn finished
+            aiThinking = false;
+            currentPlayer = PLAYER;
+            actionPoints = ACTION_POINTS_PER_TURN; // Reset AP for player
+            turnCount++; // This was incremented at start of AI's turn processing, check if needed here. Actually, player turn increases it.
+            
+            updateMessage('System cycle complete. Your turn.', PLAYER);
+            enablePlayerControls();
+            renderBoard();
+            updateUI();
+            if (checkWinConditions()) return;
+            if (turnCount > MAX_TURNS) {
+                endGameByMaxTurns();
+            }
+        }
+        
+        function getValidMovesForUnit(r, c, forPlayer) {
+            const moves = [];
+            const directions = [[-1,0], [1,0], [0,-1], [0,1]]; // N, S, W, E
+            for (const [dr, dc] of directions) {
+                const nr = r + dr;
+                const nc = c + dc;
+                if (isValidMove(r, c, nr, nc, forPlayer)) {
+                    moves.push({r: nr, c: nc});
+                }
+            }
+            return moves;
+        }
+
+
+        /**
+         * Counts tiles controlled by each entity.
+         */
+        function countTiles() {
+            let pTiles = 0;
+            let systemTiles = 0;
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (tileOwners[r][c] === TILE_PLAYER) pTiles++;
+                    else if (tileOwners[r][c] === TILE_AI) systemTiles++;
+                }
+            }
+            return { pTiles, systemTiles };
+        }
+
+        /**
+         * Counts units for each entity.
+         */
+        function countUnits() {
+            let pUnits = 0;
+            let systemUnits = 0;
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (grid[r][c]) {
+                        if (grid[r][c].player === PLAYER) pUnits++;
+                        else if (grid[r][c].player === AI) systemUnits++;
+                    }
+                }
+            }
+            return { pUnits, systemUnits };
+        }
+
+        /**
+         * Checks for win conditions. Returns true if game ended.
+         */
+        function checkWinConditions() {
+            if (gameOver) return true;
+
+            const { pUnits, systemUnits } = countUnits();
+
+            if (pUnits === 0 && systemUnits > 0) {
+                endGame(AI, "eliminated all your units");
+                return true;
+            }
+            if (systemUnits === 0 && pUnits > 0) {
+                endGame(PLAYER, "eliminated all System units");
+                return true;
+            }
+            if (pUnits === 0 && systemUnits === 0) {
+                endGame(null, "Mutual Annihilation! All units eradicated.");
+                return true;
+            }
+            return false; // Game continues
+        }
+        
+        function endGameByMaxTurns() {
+            const { pTiles, systemTiles } = countTiles();
+            let winner = null;
+            let reason = `System cycle limit reached (${MAX_TURNS} turns). `;
+
+            if (pTiles > systemTiles) {
+                winner = PLAYER;
+                reason += `You control more nodes! (${pTiles} to ${systemTiles})`;
+            } else if (systemTiles > pTiles) {
+                winner = AI;
+                reason += `System controls more nodes. (${systemTiles} to ${pTiles})`;
+            } else {
+                reason += `Node control is a stalemate! (${pTiles} each)`;
+            }
+            endGame(winner, reason);
+        }
+
+        function endGame(winner, reason) {
+            gameOver = true;
+            aiThinking = false;
+            selectedUnit = null; 
+            renderBoard(); 
+
+            let message = reason;
+            let messageContext = 'gameover';
+            if (winner === PLAYER) {
+                message = `VICTORY! ${reason}`;
+            } else if (winner === AI) {
+                message = `DEFEAT! ${reason}`;
+            } else { // Draw
+                message = `STALEMATE. ${reason}`;
+            }
+            updateMessage(message, messageContext, true); // True for game over style
+            
+            disablePlayerControls();
+            restartGameBtn.classList.remove('hidden');
+        }
+
+        /**
+         * Updates all UI elements.
+         */
+        function updateUI() {
+            currentPlayerDisplay.textContent = gameOver ? "SYSTEM OFFLINE" : (currentPlayer === PLAYER ? "YOUR TURN" : "SYSTEM ACTIVE");
+            currentPlayerDisplay.classList.remove('pulse-player', 'pulse-ai', 'text-emerald-400', 'text-purple-400', 'text-gray-400');
+            if (gameOver) {
+                 currentPlayerDisplay.classList.add('text-amber-400');
+            } else if (currentPlayer === PLAYER) {
+                currentPlayerDisplay.classList.add('text-emerald-400', 'pulse-player');
+            } else {
+                currentPlayerDisplay.classList.add('text-purple-400', 'pulse-ai');
+            }
+
+            actionPointsDisplay.textContent = gameOver ? "-" : (currentPlayer === PLAYER ? actionPoints : '...'); // AI AP not shown to player
+            turnDisplay.textContent = `${Math.min(Math.ceil(turnCount/2), MAX_TURNS/2)} / ${MAX_TURNS/2}`;
+
+            const { pTiles, systemTiles } = countTiles();
+            playerScoreDisplay.textContent = pTiles;
+            aiScoreDisplay.textContent = systemTiles;
+
+            if (currentPlayer === PLAYER && !gameOver) {
+                 if (actionPoints < SPAWN_COST) {
+                    spawnUnitBtn.classList.add('btn-disabled');
+                    spawnUnitBtn.disabled = true;
+                 } else {
+                    spawnUnitBtn.classList.remove('btn-disabled');
+                    spawnUnitBtn.disabled = false;
+                 }
+            } else { // AI turn or game over
+                 spawnUnitBtn.classList.add('btn-disabled');
+                 spawnUnitBtn.disabled = true;
+            }
+        }
+
+        function updateMessage(text, context, isGameOver = false) {
+            messageArea.textContent = text;
+            messageArea.className = 'text-lg font-semibold transition-all duration-300 '; // Reset classes
+            if (isGameOver){
+                 messageArea.classList.add('message-gameover');
+            } else if (context === PLAYER) {
+                messageArea.classList.add('message-player');
+            } else if (context === AI) {
+                messageArea.classList.add('message-ai');
+            } else { 
+                messageArea.classList.add('message-neutral');
+            }
+        }
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            initGame();
+
+            spawnUnitBtn.addEventListener('click', handleSpawnUnit);
+            endTurnBtn.addEventListener('click', handleEndTurn);
+            restartGameBtn.addEventListener('click', initGame);
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Audio Visualizer</title>
+    <style>
+        /* A dark, clean canvas for our visualizer */
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* The canvas will be our drawing surface */
+        #visualizerCanvas {
+            background: #000;
+            display: block;
+        }
+
+        /* Instructions that appear before the visualizer starts */
+        #instructions {
+            position: absolute;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 24px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid #fff;
+            padding: 20px 40px;
+            border-radius: 10px;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Style for when the instructions are hidden */
+        #instructions.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="visualizerCanvas"></canvas>
+    <div id="instructions">Click to Start Visualizer</div>
+
+    <script>
+        const canvas = document.getElementById('visualizerCanvas');
+        const ctx = canvas.getContext('2d');
+        const instructions = document.getElementById('instructions');
+
+        // Set canvas dimensions
+        canvas.width = window.innerWidth * 0.8;
+        canvas.height = window.innerHeight * 0.6;
+        
+        let audioContext;
+        let analyser;
+        let source;
+        let dataArray;
+        let bufferLength;
+
+        // The main function to set up and start the visualizer
+        function setupVisualizer(stream) {
+            // Create a new AudioContext
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create an analyser node
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256; // Determines the number of bars (frequency bins)
+            
+            // Create a source node from the microphone stream
+            source = audioContext.createMediaStreamSource(stream);
+            
+            // Connect the nodes: microphone -> analyser
+            // We don't connect to the destination, so you don't hear your own mic input
+            source.connect(analyser);
+
+            // Get the number of frequency bins
+            bufferLength = analyser.frequencyBinCount;
+            
+            // Create an array to store the frequency data
+            dataArray = new Uint8Array(bufferLength);
+            
+            // Start the animation loop
+            animate();
+        }
+
+        // The animation loop that draws the visualizer on each frame
+        function animate() {
+            // Clear the canvas. Using a semi-transparent color creates a nice "fade" effect.
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Get the frequency data from the analyser
+            analyser.getByteFrequencyData(dataArray);
+            
+            const barWidth = (canvas.width / bufferLength) * 2;
+            let barHeight;
+            let x = 0;
+            
+            // Loop through the data and draw a bar for each frequency bin
+            for (let i = 0; i < bufferLength; i++) {
+                barHeight = dataArray[i]; // The value is from 0 to 255
+                
+                // Set the color of the bar based on its height
+                // This creates a nice gradient from blue (low) to red (high)
+                const hue = 180 + (barHeight / 255) * 180; // Ranges from blue to red
+                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                
+                // Draw the bar. We multiply height by 2.5 for a more dramatic effect.
+                ctx.fillRect(x, canvas.height - barHeight * 2.5, barWidth, barHeight * 2.5);
+                
+                // Move to the next bar's position
+                x += barWidth + 1;
+            }
+            
+            // Request the next frame to continue the animation
+            requestAnimationFrame(animate);
+        }
+
+        // Event listener to start everything on a user click
+        instructions.addEventListener('click', () => {
+            // Use navigator.mediaDevices to request microphone access
+            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(stream => {
+                    // Hide the instructions
+                    instructions.classList.add('hidden');
+                    // Set up and start the visualizer
+                    setupVisualizer(stream);
+                })
+                .catch(err => {
+                    // Handle errors (e.g., user denies permission)
+                    instructions.textContent = 'Microphone access denied. Please allow microphone access to use the visualizer.';
+                    console.error('Error accessing microphone:', err);
+                });
+        });
+
+        // Optional: Resize the canvas if the window is resized
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth * 0.8;
+            canvas.height = window.innerHeight * 0.6;
+        });
+
+    </script>
+</body>
+</html>

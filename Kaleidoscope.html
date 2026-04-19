@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P5.js Kaleidoscope</title>
+    <!-- Load p5.js library from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+    <style>
+        /* Basic CSS to ensure canvas fills the screen without margins or scrollbars */
+        body {
+            margin: 0;
+            overflow: hidden; /* Hide scrollbars */
+            background-color: #000; /* Set a black background for the page */
+            display: flex; /* Optional: helps in centering if canvas is smaller */
+            justify-content: center; /* Optional: helps in centering */
+            align-items: center; /* Optional: helps in centering */
+            height: 100vh;
+        }
+        canvas {
+            display: block; /* Default for p5.js, ensures no extra space around canvas */
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Global variables for the kaleidoscope settings
+        let slices = 8; // Number of symmetrical segments. Try changing this value! (e.g., 6, 10, 12)
+        let segmentAngle; // Angle of each slice
+
+        // p5.js setup function: runs once when the program starts
+        function setup() {
+            // Create a canvas that fills the browser window
+            createCanvas(windowWidth, windowHeight);
+
+            // Set angle mode to DEGREES for easier rotation calculations
+            angleMode(DEGREES);
+
+            // Set color mode to HSB (Hue, Saturation, Brightness)
+            // Max values: Hue (0-360), Saturation (0-255), Brightness (0-255), Alpha (0-255)
+            colorMode(HSB, 360, 255, 255, 255);
+
+            // Calculate the angle for each segment of the kaleidoscope
+            segmentAngle = 360 / slices;
+
+            // Set an initial background (black)
+            // In HSB mode: background(hue, saturation, brightness)
+            background(0, 0, 0);
+
+            // Set a default stroke weight for the lines
+            strokeWeight(2);
+        }
+
+        // p5.js draw function: runs repeatedly, creating animation frames
+        function draw() {
+            // Apply a semi-transparent black background each frame to create a fading trail effect
+            // HSB: background(0 (hue for black), 0 (saturation for black), 0 (brightness for black), alpha)
+            // An alpha value around 30-50 gives a nice trail.
+            background(0, 0, 0, 35);
+
+            // Translate the origin to the center of the canvas
+            // All subsequent drawing operations will be relative to this new origin
+            translate(width / 2, height / 2);
+
+            // Get current mouse coordinates relative to the new (center) origin
+            let mouseCurrentX = mouseX - width / 2;
+            let mouseCurrentY = mouseY - height / 2;
+
+            // Get previous mouse coordinates relative to the new (center) origin
+            let mousePrevX = pmouseX - width / 2;
+            let mousePrevY = pmouseY - height / 2;
+
+            // Only draw if the mouse has moved a noticeable amount
+            // This prevents drawing static dots if the mouse is still
+            if (dist(mouseX, mouseY, pmouseX, pmouseY) > 0.5) {
+
+                // Calculate a hue value that changes over time (based on frame count)
+                // This will make the lines cycle through colors
+                let currentHue = frameCount % 360;
+
+                // Set the stroke color using the calculated hue
+                // Saturation and brightness are kept high for vibrant colors
+                // An alpha value for the stroke can make lines blend smoothly
+                stroke(currentHue, 200, 255, 220); // Hue, Saturation, Brightness, Alpha
+
+                // Loop through the number of slices to create the symmetrical pattern
+                for (let i = 0; i < slices; i++) {
+                    // Save the current transformation state (important for isolating rotations)
+                    push();
+
+                    // Rotate the coordinate system by the angle of the current slice
+                    rotate(segmentAngle * i);
+
+                    // Draw a line from the previous mouse position to the current mouse position
+                    // This line is drawn in the current rotated coordinate system
+                    line(mouseCurrentX, mouseCurrentY, mousePrevX, mousePrevY);
+
+                    // To create the mirrored effect within each slice, we apply a scale transformation
+                    // scale(1, -1) reflects the coordinate system vertically (across its current x-axis)
+                    push();
+                    scale(1, -1); // Reflect vertically
+                    // Draw the same line again, it will now be mirrored
+                    line(mouseCurrentX, mouseCurrentY, mousePrevX, mousePrevY);
+                    pop(); // Restore the coordinate system (remove the scale transformation)
+
+                    pop(); // Restore the coordinate system (remove the rotate transformation)
+                }
+            }
+        }
+
+        // p5.js function that is called when the browser window is resized
+        function windowResized() {
+            // Resize the canvas to the new window dimensions
+            resizeCanvas(windowWidth, windowHeight);
+            // Redraw the background to clear the canvas, maintaining HSB mode for black
+            background(0, 0, 0);
+        }
+
+        // p5.js function that is called when a key is pressed
+        function keyPressed() {
+            // If the 'c' or 'C' key is pressed, clear the canvas
+            if (key === 'c' || key === 'C') {
+                background(0, 0, 0); // Clear with black
+            }
+            // Optional: Uncomment to save the canvas as a PNG image when 's' or 'S' is pressed
+            /*
+            if (key === 's' || key === 'S') {
+                saveCanvas('kaleidoscope_pattern', 'png');
+            }
+            */
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particle System</title>
+    <style>
+        /* Basic CSS to make the canvas fill the screen */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000000;
+            overflow: hidden; /* Hide scrollbars */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* The canvas where the magic happens */
+        #particleCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Simple instructions on top */
+        .instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 16px;
+            pointer-events: none; /* Allows mouse events to pass through */
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particleCanvas"></canvas>
+    <div class="instructions">Move your mouse to interact with the particles</div>
+
+    <script>
+        // Get the canvas and its 2D rendering context
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas dimensions to the full window size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // An object to store the mouse's current position
+        const mouse = {
+            x: null,
+            y: null,
+            radius: 250 // The radius of the interaction area around the mouse
+        };
+
+        // Update mouse coordinates when the mouse moves
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.x;
+            mouse.y = event.y;
+        });
+        
+        // Reset mouse coordinates when it leaves the window to stop interaction
+        window.addEventListener('mouseout', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // Array to hold all particle objects
+        let particlesArray = [];
+        const numberOfParticles = 150;
+
+        // The Particle class defines the properties and behavior of a single particle
+        class Particle {
+            constructor(x, y, size, color, weight) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+                this.weight = weight; // "weight" affects how fast the particle moves away from the mouse
+                this.baseX = this.x; // Original x position for returning effect
+                this.baseY = this.y; // Original y position
+            }
+
+            // Method to draw the particle on the canvas
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+
+            // Method to update the particle's position each frame
+            update() {
+                // Calculate the distance between the particle and the mouse
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // Force/direction calculation when mouse is close
+                let forceDirectionX = dx / distance;
+                let forceDirectionY = dy / distance;
+                
+                // The maximum distance a particle can be pushed
+                let maxDistance = mouse.radius;
+                
+                // The force applied is stronger the closer the mouse is
+                let force = (maxDistance - distance) / maxDistance;
+                
+                // Calculate the final direction vector
+                let directionX = forceDirectionX * force * this.weight;
+                let directionY = forceDirectionY * force * this.weight;
+
+                // If the mouse is within the interaction radius, push the particle away
+                if (distance < mouse.radius) {
+                    this.x -= directionX;
+                    this.y -= directionY;
+                } else {
+                    // If the particle is not at its original position, slowly move it back
+                    if (this.x !== this.baseX) {
+                        let dx_return = this.x - this.baseX;
+                        this.x -= dx_return / 10;
+                    }
+                    if (this.y !== this.baseY) {
+                        let dy_return = this.y - this.baseY;
+                        this.y -= dy_return / 10;
+                    }
+                }
+                
+                this.draw();
+            }
+        }
+
+        // The init function creates the particles and populates the array
+        function init() {
+            particlesArray = [];
+            let gap = 25; // Gap between particles
+            for (let y = 0; y < canvas.height; y += gap) {
+                for (let x = 0; x < canvas.width; x += gap) {
+                    const size = 3;
+                    const color = '#00bfff';
+                    const weight = Math.random() * 2 + 1; // Random weight for varied movement
+                    particlesArray.push(new Particle(x, y, size, color, weight));
+                }
+            }
+        }
+
+        // The animate function is the main loop that runs every frame
+        function animate() {
+            // Clear the canvas with a semi-transparent black for a trailing effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update each particle in the array
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            
+            // Request the next frame
+            requestAnimationFrame(animate);
+        }
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Re-initialize to re-distribute particles on the new canvas size
+            init();
+        });
+
+        // Start the animation!
+        init();
+        animate();
+
+    </script>
+</body>
+</html>
